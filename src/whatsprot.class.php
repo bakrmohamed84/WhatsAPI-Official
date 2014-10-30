@@ -78,6 +78,7 @@ class WhatsProt
     protected $serverReceivedId;        // Confirm that the *server* has received your command.
     protected $socket;                  // A socket to connect to the WhatsApp network.
     protected $writer;                  // An instance of the BinaryTreeNodeWriter class.
+    public $identity_generator = "WART";  // If you need to use old identity generation way, or you use WART (https://github.com/shirioko/WART) to generate identity
 
     /**
      * Default class constructor.
@@ -98,12 +99,22 @@ class WhatsProt
         $this->reader = new BinTreeNodeReader();
         $this->debug = $debug;
         $this->phoneNumber = $number;
-        if (!$this->checkIdentity($identity)) {
-            //compute identity with pseudo_random_bytes
+        if($this->identity_generator == "WART") {
+            if (!$this->checkIdentity($identity)) {
+            //compute sha identity hash
             $this->identity = $this->buildIdentity($identity);
+            } else {
+                //use provided identity hash
+                $this->identity = $identity;
+            }
         } else {
-            //use provided identity hash
-            $this->identity = file_get_contents($identity.'.dat');
+            if (!$this->checkIdentity($identity)) {
+                //compute identity with pseudo_random_bytes
+                $this->identity = $this->buildIdentity($identity);
+            } else {
+                //use provided identity hash
+                $this->identity = file_get_contents($identity.'.dat');
+            }
         }
         $this->name = $nickname;
         $this->loginStatus = static::DISCONNECTED_STATUS;
@@ -2028,33 +2039,42 @@ class WhatsProt
      * @param  string $identity File name where identity is going to be saved.
      * @return string           Correctly formatted identity
      */
-    protected function buildIdentity($identity)
+        protected function buildIdentity($identity)
     {
-        if (file_exists($identity.".dat"))
-		{
-			return file_get_contents($identity.'.dat');
-		}
-		else
-		{
-			$id = fopen($identity.".dat", "w");
-			$bytes = "%".implode("%", str_split(strtoupper(bin2hex(openssl_random_pseudo_bytes(16))), 2));
-			fwrite($id, $bytes);
-			fclose($id);
-
-			return $bytes;
-		}
+        
+        if($this->identity_generator == "WART") {
+           return strtolower(urlencode(sha1($identity, true))); 
+        } else {    
+            if (file_exists($identity.".dat"))
+    		{
+    			return file_get_contents($identity.'.dat');
+    		}
+    		else
+    		{
+    			$id = fopen($identity.".dat", "w");
+    			$bytes = "%".implode("%", str_split(strtoupper(bin2hex(openssl_random_pseudo_bytes(16))), 2));
+    			fwrite($id, $bytes);
+    			fclose($id);
+    
+    			return $bytes;
+    		}
+        }
     }
 
     protected function checkIdentity($identity)
     {
-    	if (file_exists($identity.".dat"))
-		{
-    		return (strlen(file_get_contents($identity.'.dat')) == 48);
-    	}
-    	else
-    	{
-    		return false;
-    	}
+    	if($this->identity_generator == "WART") {
+           return (strlen(urldecode($identity)) == 20);
+        } else {
+            if (file_exists($identity.".dat"))
+    		{
+        		return (strlen(file_get_contents($identity.'.dat')) == 48);
+        	}
+        	else
+        	{
+        		return false;
+        	}
+        }
     }
 
     public function sendSync(array $numbers, $mode = "full", $context = "registration", $index = 0, $last = true)
